@@ -59,16 +59,18 @@ def deepnn(x):
   x_image = tf.reshape(x, [-1, 28, 28, 1])
 
   # First convolutional layer - maps one grayscale image to 32 feature maps.
-  W_conv1 = weight_variable([5, 5, 1, 32])
-  b_conv1 = bias_variable([32])
+  name_1="conv1"
+  W_conv1 = weight_variable([5, 5, 1, 32],name_1+"_filters")
+  b_conv1 = bias_variable([32],name_1+"_biases")
   h_conv1 = tf.nn.relu(conv2d(x_image, W_conv1) + b_conv1)
 
   # Pooling layer - downsamples by 2X.
   h_pool1 = max_pool_2x2(h_conv1)
 
   # Second convolutional layer -- maps 32 feature maps to 64.
-  W_conv2 = weight_variable([5, 5, 32, 64])
-  b_conv2 = bias_variable([64])
+  name_2="conv2"
+  W_conv2 = weight_variable([5, 5, 32, 64],name_2+"_filters")
+  b_conv2 = bias_variable([64],name_2+"_biases")
   h_conv2 = tf.nn.relu(conv2d(h_pool1, W_conv2) + b_conv2)
 
   # Second pooling layer.
@@ -76,8 +78,9 @@ def deepnn(x):
 
   # Fully connected layer 1 -- after 2 round of downsampling, our 28x28 image
   # is down to 7x7x64 feature maps -- maps this to 1024 features.
-  W_fc1 = weight_variable([7 * 7 * 64, 1024])
-  b_fc1 = bias_variable([1024])
+  name_3="fc1"
+  W_fc1 = weight_variable([7 * 7 * 64, 1024],name_3+"_weights")
+  b_fc1 = bias_variable([1024],name_3+"_biases")
 
   h_pool2_flat = tf.reshape(h_pool2, [-1, 7*7*64])
   h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
@@ -88,8 +91,9 @@ def deepnn(x):
   h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
 
   # Map the 1024 features to 10 classes, one for each digit
-  W_fc2 = weight_variable([1024, 10])
-  b_fc2 = bias_variable([10])
+  name_4="fc2"
+  W_fc2 = weight_variable([1024, 10],name_4+"_weights")
+  b_fc2 = bias_variable([10],name_4+"_biases")
 
   y_conv = tf.matmul(h_fc1_drop, W_fc2) + b_fc2
   return y_conv, keep_prob
@@ -106,16 +110,16 @@ def max_pool_2x2(x):
                         strides=[1, 2, 2, 1], padding='SAME')
 
 
-def weight_variable(shape):
+def weight_variable(shape,name):
   """weight_variable generates a weight variable of a given shape."""
   initial = tf.truncated_normal(shape, stddev=0.1)
-  return tf.Variable(initial)
+  return tf.get_variable(name=name, initializer=initial)
 
 
-def bias_variable(shape):
+def bias_variable(shape,name):
   """bias_variable generates a bias variable of a given shape."""
   initial = tf.constant(0.1, shape=shape)
-  return tf.Variable(initial)
+  return tf.get_variable(name=name, initializer=initial)
 
 
 def main(_):
@@ -130,17 +134,24 @@ def main(_):
   y_ = tf.placeholder(tf.float32, [None, 10])
 
   # Build the graph for the deep net
-  y_conv, keep_prob = deepnn(x)
+  with tf.variable_scope("cnn") as scope:
+    y_conv, keep_prob = deepnn(x)
 
-  cross_entropy = tf.reduce_mean(
-      tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y_conv))
-  train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
-  correct_prediction = tf.equal(tf.argmax(y_conv, 1), tf.argmax(y_, 1))
-  accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+    cross_entropy = tf.reduce_mean(
+        tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y_conv))
+    train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
+    correct_prediction = tf.equal(tf.argmax(y_conv, 1), tf.argmax(y_, 1))
+    accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+    tf.summary.scalar("accuracy",accuracy)
+    # var_list=tf.trainable_variables()
+    # saver = tf.train.Saver(var_list)
+    saver = tf.train.Saver()
+    #check if the value is restored rightly
+    all_val = tf.get_collection(tf.GraphKeys.VARIABLES)
 
   with tf.Session() as sess:
     sess.run(tf.global_variables_initializer())
-    for i in range(20000):
+    for i in range(2000):
       batch = mnist.train.next_batch(50)
       if i % 100 == 0:
         train_accuracy = accuracy.eval(feed_dict={
@@ -148,8 +159,16 @@ def main(_):
         print('step %d, training accuracy %g' % (i, train_accuracy))
       train_step.run(feed_dict={x: batch[0], y_: batch[1], keep_prob: 0.5})
 
-    print('test accuracy %g' % accuracy.eval(feed_dict={
-        x: mnist.test.images, y_: mnist.test.labels, keep_prob: 1.0}))
+
+    # print('test accuracy %g' % accuracy.eval(feed_dict={
+    #     x: mnist.test.images, y_: mnist.test.labels, keep_prob: 1.0}))
+
+    save_path = saver.save(sess,"records/all/model.ckpt")
+    print("Model saved in file: %s" % save_path)
+
+    var_test = [v for v in all_val if v.name == "cnn/conv1_biases:0"][0]
+    print(var_test.name)
+    print(var_test.eval())
 
 
 if __name__ == '__main__':
