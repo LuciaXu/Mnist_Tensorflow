@@ -55,7 +55,7 @@ def main(_):
         print("file:{} does not exists".format(filename))
         return 0
     batch =5
-    data,label,row,col,depth = input(tf_file=filename,epoch=2,batch_size=batch)
+    data,label,row,col,depth = input(tf_file=filename,epoch=1,batch_size=batch)
     init_op = tf.group(tf.global_variables_initializer(),
                        tf.local_variables_initializer())
     with tf.Session() as sess:
