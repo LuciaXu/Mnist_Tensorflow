@@ -158,53 +158,93 @@ def main(_):
 
     y_conv, keep_prob = deepnn(x)
 
-    cross_entropy = tf.reduce_mean(
-        tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y_conv))
-    train_step = tf.train.AdamOptimizer(1e-5).minimize(cross_entropy)
-    correct_prediction = tf.equal(tf.argmax(y_conv, 1), tf.argmax(y_, 1))
-    accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-    tf.summary.scalar("accuracy",accuracy)
+    with tf.Session() as sess:
 
-  with tf.Session() as sess:
+        # init all variables in the new model
+        # sess.run(tf.global_variables_initializer())
+        all_val = tf.get_collection(tf.GraphKeys.VARIABLES)
+        print(len(all_val))
+        for v in all_val:
+            print(v.name)
 
-      #init all variables in the new model
-      sess.run(tf.global_variables_initializer())
-      all_val = tf.get_collection(tf.GraphKeys.VARIABLES)
-      train_all_val=sess.run(all_val)
-      print(len(train_all_val))
 
-      #get the list of the names of the variables need to restored
-      checkpoint="records/all/model.ckpt"
-      restored_val = list_variables(checkpoint)
-      print(len(restored_val))
+        # get the list of the names of the variables need to restored
+        checkpoint = "records/all/model.ckpt"
+        restored_val = list_variables(checkpoint)
+        print(len(restored_val))
+        print(restored_val)
 
-      #build the dictionary to restore the variables of the new model that are needed from checkpoints
-      val_dic={}
-      for v in all_val:
-          if v.name.split(':')[0] in restored_val:
-              val_dic[v.name.split(':')[0]]=v
+        # build the dictionary to restore the variables of the new model that are needed from checkpoints
+        val_dic = {}
+        val_list_old=[]
+        val_list_new=[]
+        for v in all_val:
+            if v.name.split(':')[0] in restored_val:
+                val_dic[v.name.split(':')[0]] = v
+                val_list_old.append(v)
+            else:
+                val_list_new.append(v)
+        print("old val")
+        for v in val_list_old:
+            print(v.name)
+        print("new val")
+        for v in val_list_new:
+            print(v.name)
 
-      saver = tf.train.Saver(val_dic)
+        # var_test = [v for v in all_val if v.name == "cnn/conv1_biases:0"][0]
+        # print (var_test.name)
+        # print (var_test.eval())
 
-      saver.restore(sess, checkpoint)
+        # cross_entropy = tf.reduce_mean(
+        #     tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y_conv))
+        # train_step = tf.train.AdamOptimizer(1e-5).minimize(cross_entropy)
+        # correct_prediction = tf.equal(tf.argmax(y_conv, 1), tf.argmax(y_, 1))
+        # accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+        # tf.summary.scalar("accuracy",accuracy)
 
-      # var_test = [v for v in all_val if v.name == "cnn/conv1_biases:0"][0]
-      # print (var_test.name)
-      # print (var_test.eval())
+        cross_entropy=tf.reduce_mean(
+            tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y_conv))
+        opt1=tf.train.AdamOptimizer(1e-8)
+        opt2=tf.train.AdadeltaOptimizer(1e-5)
+        grads=tf.gradients(cross_entropy,val_list_old+val_list_new)
+        grads1=grads[:len(val_list_old)]
+        grads2=grads[len(val_list_old):]
+        train_op1=opt1.apply_gradients(zip(grads1,val_list_old))
+        train_op2=opt2.apply_gradients(zip(grads2,val_list_new))
+        train_op=tf.group(train_op1,train_op2)
+        correct_prediction = tf.equal(tf.argmax(y_conv, 1), tf.argmax(y_, 1))
+        accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+        tf.summary.scalar("accuracy",accuracy)
 
-      for i in range(2000):
+        sess.run(tf.initialize_all_variables())
+
+        all_val_1 = tf.get_collection(tf.GraphKeys.VARIABLES)
+        for v in all_val_1:
+            print(v.name)
+
+        saver = tf.train.Saver(val_dic)
+
+        saver.restore(sess, checkpoint)
+
+        all_val_2 = tf.get_collection(tf.GraphKeys.VARIABLES)
+        print(len(all_val_2))
+        for v in all_val_2:
+            print(v.name)
+            print(v.eval())
+
+        for i in range(2000):
           batch_xs, batch_ys = mnist.train.next_batch(50)
 
           if i % 100 == 0:
             train_accuracy = accuracy.eval(feed_dict={x: batch_xs, y_: batch_ys, keep_prob: 1.0})
             print('step %d, training accuracy %g' % (i, train_accuracy))
-          train_step.run(feed_dict={x: batch_xs, y_: batch_ys, keep_prob: 0.5})
+            train_op.run(feed_dict={x: batch_xs, y_: batch_ys, keep_prob: 0.5})
 
       # print('test accuracy %g' % accuracy.eval(feed_dict={
       #   x: mnist.test.images, y_: mnist.test.labels, keep_prob: 1.0}))
 
-      save_path = saver.save(sess,"records/addlayer/model.ckpt")
-      print("Model saved in file: %s" % save_path)
+        save_path = saver.save(sess,"records/addlayer/model.ckpt")
+        print("Model saved in file: %s" % save_path)
 
 
 if __name__ == '__main__':
